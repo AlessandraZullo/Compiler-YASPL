@@ -115,25 +115,9 @@ public class SemanticVisitor implements Visitor {
 
     }
 
-    //REGOLA D
-    public void checkConstOp(VisitableNode<Node> node) {
-        VisitableNode<Node> constantNode = node.getChild(0);
-        VisitableNode<Node> valueNode = constantNode.getChild(0);
-        String type;
-        if (valueNode.data().getName().startsWith("'"))
-            type = "character";
-        else if (valueNode.data().getName().startsWith("\""))
-            type = "string";
-        else if (valueNode.data().getName().equals("true") || valueNode.data().getName().equals("false"))
-            type = "boolean";
-        else
-            type = "integer";
-        valueNode.data().setType(type);
-        constantNode.data().setType(type);
-        node.data().setType(type);
-    }
 
     //REGOLA C
+
     public void checkIdentifier(VisitableNode<Node> node) throws NonDeclarationException {
         VisitableNode<Node> identifier = node.getChild(0);
         VisitableNode<Node> value = identifier.getChild(0);
@@ -168,10 +152,18 @@ public class SemanticVisitor implements Visitor {
 
 
     //TYPE SYSTEM
-    //ASSIGN_OP
+    //ASSIGN_OP = variable:value ASSIGN expression:node
+    //Effettua il typechecking sulla variabile (controlla che sia presente la sua dichiarazione e prendi il type)
+    // Effettua il type checking sulla espressione
+    // Controlla i due type
     public void checkAssignOp(VisitableNode<Node> node) {
         VisitableNode<Node> variable = node.getChild(0);
         VisitableNode<Node> expression = node.getChild(1);
+        try {
+            checkIdentifier(node);
+        } catch (NonDeclarationException e) {
+            System.out.println(e.getMessage());
+        }
         checkExprOp(expression);
         String type;
         if (variable.data().getType() == expression.data().getType()) {
@@ -181,10 +173,14 @@ public class SemanticVisitor implements Visitor {
             System.out.println("************ TYPE MISMATCH **************   \n"
                     + node + "\n" +
                     "la variabile " + variable.firstChild().data().getName() + " è un " + variable.data().getType());
+            System.exit(0);
         }
     }
 
     // READ_ OP & PROCEDURE_STATEMENT
+    // READ LPAR input_variable:ptr_st read_variables
+    // variable = identificatore
+    // Assegna al nodo ReadOp o ProcOp il tipo della prima variabile
     public void checkReadProcOp(VisitableNode<Node> node) {
         VisitableNode<Node> identifier = node.getChild(0);
         String type = identifier.getChild(0).data().getType();
@@ -193,6 +189,9 @@ public class SemanticVisitor implements Visitor {
     }
 
     // Scorri i figli e verifica che hanno tutti lo stesso tipo, se anche uno non ha lo stesso tipo restituisci errore
+    //  WRITE LPAR output_value:node1 output_values:node2 RPAR
+    // output_value = expression
+    // Prendi tutti i figli (che sono expression) e controlla che abbiano tutti lo stesso type
     public void checkWriteOp(VisitableNode<Node> node) {
         VisitableNode<Node> output_node;
         VisitableNode<Node> expression_node;
@@ -211,7 +210,10 @@ public class SemanticVisitor implements Visitor {
         node.data().setType(type);
     }
 
+    // metodo per il type checking di structured_statement
     // nodo.type = tipo dell’ultimo nodo figlio
+    // compound = BEGIN statement:ptr_st statements:ptr_sts
+    // statement := simpleStatement or StructuredStatement
     public void checkCompoundOpAndIfAndWhile(VisitableNode<Node> node) {
         String name = node.data().getName();
         switch (name) {
@@ -240,29 +242,68 @@ public class SemanticVisitor implements Visitor {
 
     }
 
+
+
+    public void checkDefault(VisitableNode<Node> node){
+        VisitableNode<Node> defaultNode = node.firstChild();
+        checkStatement(defaultNode);
+        node.data().setType(defaultNode.data().getType());
+    }
+    public void checkCase(VisitableNode<Node> node){
+        VisitableNode<Node> constantNode = node.firstChild();
+        VisitableNode<Node> statement = node.getChild(1);
+        checkConstOp(constantNode);
+        checkStatement(statement);
+        node.data().setType(constantNode.data().getType());
+    }
+
+    // type checking statement (può essere simple statement oppure structured statement)
+    public void checkStatement(VisitableNode<Node> node) {
+        String nameCurrentNode = node.data().getName();
+        switch (nameCurrentNode) {
+            case(Constant.ASSIGN_OP):{
+                checkAssignOp(node);
+                break;
+            }
+            case (Constant.READ_NODE):{
+                checkReadProcOp(node);
+                break;
+            }
+            case(Constant.PROC_NODE):{
+                checkReadProcOp(node);
+                break;
+            }
+
+            case(Constant.WRITE_NODE):{
+                checkWriteOp(node);
+                break;
+            }
+            case Constant.COMP_NODE: {
+                checkCompoundOpAndIfAndWhile(node.firstChild());
+                break;
+            }
+            case Constant.IF_THEN_ELSE_NODE: {
+                checkIfAndWhile(node);
+                break;
+            }
+            case Constant.IF_THEN_NODE: {
+                checkIfAndWhile(node);
+                break;
+            }
+            case Constant.WHILE_NODE: {
+                checkIfAndWhile(node);
+                break;
+            }
+        }
+    }
+
+
     public void checkIfAndWhile(VisitableNode<Node> node) {
         VisitableNode<Node> child = node.firstChild();
         checkExprOp(child);
     }
 
-    // assegnazione tipo per i figli di compound statement
-    public void checkCompoundStatement(VisitableNode<Node> node) {
-        String name = node.data().getName();
-        int numChlild = node.numChild();
-        VisitableNode<Node> child;
-        for (int i = 0; i < numChlild; i++) {
-            child = node.getChild(i);
-            try {
-                checkRuleA(child);
-            } catch (NonDeclarationException e) {
-                System.out.println(e.getMessage());
-                System.exit(0);
 
-            }
-        }
-
-
-    }
 
 
     // simple_expression:node1 adding_operator:value simple_expression:node2
@@ -306,6 +347,7 @@ public class SemanticVisitor implements Visitor {
     }
 
     // simple_expression
+    // quando invocato bisogna passare il figlio
     // prendo il primo figlio e applico il type checking in base alla produzione da applicare
     public void typeCheckingSimpleExpr(VisitableNode<Node> firstChild) {
         switch (firstChild.data().getName()) {
@@ -392,8 +434,8 @@ public class SemanticVisitor implements Visitor {
             System.out.println("********** TYPE MISMATCH ********** \n" +
                     node +
                     "ERRORE RISCONTRATO: \n" +
-                    "Nodo: " + node1.data().getName() + " Tipo: " + type1 +
-                    "\nNodo: " + node2.data().getName() + " Tipo: " + type2);
+                    "Variabile : " + node1.firstChild().firstChild().data().getName() + " Tipo: " + type1 +
+                    "\nVariabile : " + node2.firstChild().firstChild().data().getName() + " Tipo: " + type2);
             System.exit(0);
 
         } else node.data().setType(type1);
@@ -425,6 +467,24 @@ public class SemanticVisitor implements Visitor {
             System.out.println(e.getMessage());
         }
     }
+
+    public void checkConstOp(VisitableNode<Node> node) {
+        VisitableNode<Node> constantNode = node.getChild(0);
+        VisitableNode<Node> valueNode = constantNode.getChild(0);
+        String type;
+        if (valueNode.data().getName().startsWith("'"))
+            type = "character";
+        else if (valueNode.data().getName().startsWith("\""))
+            type = "string";
+        else if (valueNode.data().getName().equals("true") || valueNode.data().getName().equals("false"))
+            type = "boolean";
+        else
+            type = "integer";
+        valueNode.data().setType(type);
+        constantNode.data().setType(type);
+        node.data().setType(type);
+    }
+
 
 }
 

@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="java-cup-11b3">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/out/production/Analizzatore_Semantico/java-cup-11b.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
